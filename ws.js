@@ -15,9 +15,9 @@
     if (u.protocol === 'file:' || u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
       return 'ws://localhost:8080';
     }
-    // 线上部署（Vercel 等 HTTPS）→ 同主机 /ws（需反向代理）
+    // 线上部署 → 同主机
     var protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
-    return protocol + '//' + u.host + '/ws';
+    return protocol + '//' + u.host;
   })();
 
   var MAX_RECONNECT_DELAY = 30000;   // 最大重连间隔 30s
