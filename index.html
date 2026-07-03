@@ -15,6 +15,18 @@ canvas{display:block;position:absolute;top:0;left:0}
 <body>
 <canvas id="c"></canvas>
 <div id="toast"></div>
+<input type="file" id="avatarFileInput" accept="image/*" style="display:none" onchange="account_onFilePicked(event)">
+<div id="chatBar"><input id="chatInput" type="text" maxlength="200" placeholder="输入消息…" autocomplete="off" autocorrect="off" autocapitalize="off"><button id="chatSendBtn" onclick="forum_sendMsg()">发送</button></div>
+<script src="ws.js"></script>
+<!-- ── 聊天输入栏样式 ── -->
+<style>
+#chatBar{display:none;position:fixed;bottom:0;left:0;width:100%;background:rgba(250,245,235,.97);padding:8px 12px;z-index:30;box-shadow:0 -2px 12px rgba(0,0,0,.06);align-items:center;gap:8px;border-top:1px solid rgba(0,0,0,.06)}
+#chatBar.show{display:flex}
+#chatBar input{flex:1;padding:10px 14px;border:1px solid rgba(0,0,0,.12);border-radius:20px;font-size:15px;font-family:inherit;outline:none;background:#fff}
+#chatBar input:focus{border-color:#8a6040}
+#chatBar button{padding:10px 18px;border:none;border-radius:20px;background:#8a6040;color:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
+#chatBar button:active{background:#6a4a2a}
+</style>
 <script>
 // ============================================================
 // 半日棋堂 — Web 版
@@ -533,7 +545,15 @@ function drawTopBar(ctx, w, currentColor, moveCount, isOnline, myTurn) {
   ctx.fillStyle = '#c8a96e'; ctx.font = '14px sans-serif';
   ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
   var statusText = (currentColor==='B'?'⚫ 黑棋':'⚪ 白棋') + ' · 第' + moveCount + '手';
-  if (isOnline && !myTurn) statusText += '  等待对手…';
+  if (isOnline) {
+    if (!myTurn) statusText += '  等待对手…';
+    var wsStat = WS.getStatus();
+    var dotColor = wsStat === 'connected' ? '#66bb6a' : (wsStat === 'connecting' ? '#ffa726' : '#ef5350');
+    var dotText = wsStat === 'connected' ? '🟢' : (wsStat === 'connecting' ? '🟡' : '🔴');
+    ctx.textAlign = 'right'; ctx.font = '10px sans-serif'; ctx.fillStyle = dotColor;
+    ctx.fillText(dotText + ' 联网' + (wsStat === 'connected' ? '' : '…'), w - 16, 13);
+    ctx.textAlign = 'left'; ctx.font = '14px sans-serif'; ctx.fillStyle = '#c8a96e';
+  }
   ctx.fillText(statusText, 82, 35);
   var px = w - 138, py = 19, pw = 44, ph = 32;
   ctx.fillStyle = '#2a3a4a';
@@ -1092,7 +1112,7 @@ function invite_draw(ctx, w, h, theme) {
   ctx.font = 'bold 13px sans-serif';
   ctx.textAlign = 'center';
   ctx.fillText('— 选择模式 —', w / 2, secY);
-  var btnW = w - 80, btnH = 44, btnX = 40;
+  var btnW = w - 80, btnH = 40, btnX = 40, btnGap = 10;
 
   // Local mode (always available)
   var b1Y = secY + 28;
@@ -1103,20 +1123,42 @@ function invite_draw(ctx, w, h, theme) {
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillText('👤 本地双人对弈', btnX + btnW / 2, b1Y + btnH / 2);
 
-  // Online modes (coming soon)
-  var b2Y = b1Y + btnH + 12;
-  ctx.fillStyle = '#d0ccc4';
+  var wsOk = WS.isConnected();
+  // 随机匹配
+  var b2Y = b1Y + btnH + btnGap;
+  var isMatch = invite_mode === 'match';
+  ctx.fillStyle = isMatch ? '#8a6040' : (wsOk ? '#e8e0d4' : '#d0ccc4');
   invite_rrect(ctx, btnX, b2Y, btnW, btnH, 10); ctx.fill();
-  ctx.fillStyle = '#999';
-  ctx.font = '13px sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('🏠 创建联机房 (开发中)', btnX + btnW / 2, b2Y + btnH / 2);
-
-  var b3Y = b2Y + btnH + 12;
-  ctx.fillStyle = '#d0ccc4';
+  ctx.fillStyle = isMatch ? '#fff' : (wsOk ? '#5a4a3a' : '#999');
+  ctx.fillText('🎲 随机匹配' + (wsOk ? '' : ' (离线)'), btnX + btnW / 2, b2Y + btnH / 2);
+  // 创建房间
+  var b3Y = b2Y + btnH + btnGap;
+  var isCreate = invite_mode === 'create';
+  ctx.fillStyle = isCreate ? '#8a6040' : (wsOk ? '#e8e0d4' : '#d0ccc4');
   invite_rrect(ctx, btnX, b3Y, btnW, btnH, 10); ctx.fill();
-  ctx.fillStyle = '#999';
-  ctx.fillText('🔗 加入联机房 (开发中)', btnX + btnW / 2, b3Y + btnH / 2);
+  ctx.fillStyle = isCreate ? '#fff' : (wsOk ? '#5a4a3a' : '#999');
+  ctx.fillText('🏠 创建房间' + (wsOk ? '' : ' (离线)'), btnX + btnW / 2, b3Y + btnH / 2);
+  // 加入房间
+  var b4Y = b3Y + btnH + btnGap;
+  var isJoin = invite_mode === 'join';
+  ctx.fillStyle = isJoin ? '#8a6040' : (wsOk ? '#e8e0d4' : '#d0ccc4');
+  invite_rrect(ctx, btnX, b4Y, btnW, btnH, 10); ctx.fill();
+  ctx.fillStyle = isJoin ? '#fff' : (wsOk ? '#5a4a3a' : '#999');
+  ctx.fillText('🔗 加入房间' + (wsOk ? '' : ' (离线)'), btnX + btnW / 2, b4Y + btnH / 2);
+
+  // Room code / status display
+  if (invite_roomCode && (invite_mode === 'create' || invite_mode === 'join')) {
+    var ry = b4Y + btnH + 16;
+    ctx.fillStyle = '#121a2a'; invite_rrect(ctx, btnX, ry, btnW, 42, 8); ctx.fill();
+    ctx.fillStyle = '#c8a96e'; ctx.font = 'bold 16px monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('房间号: ' + invite_roomCode, btnX + btnW/2, ry + 16);
+    if (invite_mode === 'create') { ctx.fillStyle = '#6a7a8a'; ctx.font = '11px sans-serif'; ctx.fillText('等待对手加入…', btnX + btnW/2, ry + 34); }
+  } else if (invite_mode === 'match') {
+    var my = b4Y + btnH + 16;
+    ctx.fillStyle = '#6a7a8a'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('🟡 正在匹配对手，请稍候…', btnX + btnW/2, my + 8);
+  }
 
   // Start button
   var startY = h - 90;
@@ -1134,37 +1176,393 @@ function invite_hitTest(mx, my, w, h) {
   if (mx >= 6 && mx <= 42 && my >= 8 && my <= 56) return 'back';
   var prevH = Math.min(120, h * 0.18), pY = 80;
   var secY = pY + prevH + 24;
-  var btnW = w - 80, btnH = 44, btnX = 40;
+  var btnW = w - 80, btnH = 40, btnX = 40, btnGap = 10;
   var b1Y = secY + 28;
   if (mx >= btnX && mx <= btnX + btnW && my >= b1Y && my <= b1Y + btnH) return 'local';
+  var b2Y = b1Y + btnH + btnGap;
+  if (mx >= btnX && mx <= btnX + btnW && my >= b2Y && my <= b2Y + btnH) return 'match';
+  var b3Y = b2Y + btnH + btnGap;
+  if (mx >= btnX && mx <= btnX + btnW && my >= b3Y && my <= b3Y + btnH) return 'create';
+  var b4Y = b3Y + btnH + btnGap;
+  if (mx >= btnX && mx <= btnX + btnW && my >= b4Y && my <= b4Y + btnH) return 'join';
   var startY = h - 90;
   if (mx >= 20 && mx <= w - 20 && my >= startY && my <= startY + 50) return 'start';
   return null;
 }
 
 function invite_handleTouch(hit, onReady) {
-  if (hit === 'local') { invite_mode = 'local'; invite_statusText = ''; return true; }
-  if (hit === 'create') { showToast('联网功能开发中，请选择本地对弈', 2000); return true; }
-  if (hit === 'join') { showToast('联网功能开发中，请选择本地对弈', 2000); return true; }
+  if (hit === 'local') { invite_mode = 'local'; invite_roomCode = ''; invite_statusText = ''; network_reset(); isOnline = false; return true; }
+  if (hit === 'match') {
+    if (!WS.isConnected()) { showToast('未连接到服务器，请稍候重试', 2000); return true; }
+    invite_mode = 'match'; invite_roomCode = ''; WS.match();
+    showToast('正在匹配对手…', 3000); return true;
+  }
+  if (hit === 'create') {
+    if (!WS.isConnected()) { showToast('未连接到服务器，请稍候重试', 2000); return true; }
+    invite_mode = 'create'; WS.createRoom();
+    showToast('正在创建房间…', 2000); return true;
+  }
+  if (hit === 'join') {
+    invite_mode = 'join'; invite_roomCode = '';
+    var code = prompt('请输入房间号：');
+    if (!code || !code.trim()) { invite_mode = 'local'; return true; }
+    code = code.trim().toUpperCase();
+    if (!WS.isConnected()) { showToast('未连接到服务器', 2000); invite_mode = 'local'; return true; }
+    invite_roomCode = code;
+    WS.joinRoom(code);
+    showToast('正在加入房间 ' + code + '…', 2000); return true;
+  }
   if (hit === 'start') {
     if (invite_mode === 'local') { onReady({ online: false }); return false; }
+    if (invite_mode === 'match') { showToast('正在匹配对手，请稍候…', 2000); return true; }
+    if (invite_mode === 'create') { showToast('等待对手加入房间…', 2000); return true; }
+    if (invite_mode === 'join') { showToast('等待加入房间…', 2000); return true; }
   }
   return false;
 }
 
 // ============================================================
-// Module: utils/network.js (stub — always offline)
+// Module: utils/network.js — WebSocket 联网对战
 // ============================================================
-function network_isOnline() { return false; }
-function network_myColor()  { return null; }
-function network_roomCode() { return null; }
-function network_onOpponentMove(fn) {}
-function network_syncMove(x, y, color) {}
-function network_endGame() {}
-function network_createRoom(cb) { cb({ err: '联网功能开发中' }); return { err: '联网功能开发中' }; }
-function network_joinRoom(code, cb) { cb({ err: '联网功能开发中' }); }
+var online_myColor = null;
+var online_roomCode = null;
+var online_opponentMoveHandler = null;
+
+function network_isOnline() { return isOnline; }
+function network_myColor()  { return online_myColor; }
+function network_roomCode() { return online_roomCode; }
+function network_onOpponentMove(fn) { online_opponentMoveHandler = fn; }
+function network_syncMove(x, y, color) { WS.sendMove(x, y, color); }
+function network_endGame() { /* WS handles per-message cleanup */ }
+function network_setOnline(color, room) { online_myColor = color; online_roomCode = room; }
+function network_reset() { online_myColor = null; online_roomCode = null; online_opponentMoveHandler = null; }
+
+// ── WS 事件注册（初始化时执行一次）──
+(function _initWS() {
+  // 匹配成功 / 房间 / 对手加入 → 进游戏
+  WS.on('matched', function(data) {
+    if (invite_mode !== 'match') return;
+    invite_roomCode = data.room;
+    network_setOnline(data.color, data.room);
+    isOnline = true;
+    showToast('匹配成功！你执' + (data.color === 'B' ? '⚫黑棋' : '⚪白棋'), 2500);
+    enterGame();
+  });
+  WS.on('room_created', function(data) {
+    invite_roomCode = data.room; online_roomCode = data.room;
+    showToast('房间已创建！', 2000);
+  });
+  WS.on('opponent_joined', function(data) {
+    if (invite_mode === 'create' && STATE === 'INVITE') {
+      network_setOnline(data.color === 'B' ? 'W' : 'B', online_roomCode);
+      isOnline = true;
+      showToast('对手已加入！对局开始', 2000);
+      enterGame();
+    }
+  });
+  WS.on('room_joined', function(data) {
+    invite_roomCode = data.room;
+    network_setOnline(data.color, data.room);
+    isOnline = true;
+    showToast('成功加入房间！你执' + (data.color === 'B' ? '⚫黑棋' : '⚪白棋'), 2500);
+    enterGame();
+  });
+  // 对手落子 / Pass
+  WS.on('move', function(data) {
+    if (!isOnline || STATE !== 'GAME') return;
+    var r = placeStone(data.x, data.y, stoneMap, moves, currentIdx, koPoint);
+    if (r.success) {
+      currentIdx = moves.length - 1;
+      currentColor = moves.length % 2 === 0 ? 'B' : 'W';
+      koPoint = r.koPoint || null;
+      myTurn = true;
+      if (data.color === 'B') playBlack(); else playWhite();
+      if (isDoublePass(moves)) doEndGame();
+    }
+  });
+  WS.on('pass', function(data) {
+    if (!isOnline || STATE !== 'GAME') return;
+    passMove(stoneMap, moves, currentIdx, koPoint);
+    currentIdx = moves.length - 1;
+    currentColor = moves.length % 2 === 0 ? 'B' : 'W';
+    koPoint = null; myTurn = true;
+    if (isDoublePass(moves)) doEndGame();
+  });
+  WS.on('resign', function(data) {
+    if (!isOnline || STATE !== 'GAME') return;
+    showToast('对手认输！你赢了 🎉', 3000);
+    gameResult = { winner: online_myColor || (data.color === 'B' ? 'W' : 'B'), diff: 0,
+      blackTerritory: 0, whiteTerritory: 0, blackStones: 0, whiteStones: 0, resign: true };
+    doEndGame();
+  });
+  WS.on('disconnect', function() { showToast('对手已断开连接', 3500); });
+  WS.on('error', function(data) { showToast(data.msg || '服务器错误，请重试', 2500); });
+  // 排行榜
+  WS.on('leaderboard', function(data) { leaderboard_globalLoading = false; leaderboard_globalData = data; });
+})();
 
 // ============================================================
+// Module: utils/account.js — 简易账户
+// ============================================================
+var account_avatars = ['😊','🐱','🐶','🐼','🦊','🐰','🐯','🐸','🐧','🐙','🐲','🌝'];
+var account_profile = null;
+var account_customAvatar = null;
+var account_imgCache = null;
+
+function account_load() {
+  if (account_profile) return account_profile;
+  try { var raw = storageGet('hc_profile'); account_profile = raw ? JSON.parse(raw) : null; } catch(e) { account_profile = null; }
+  if (!account_profile) { account_profile = { name: '棋手', avatar: '😊', customAvatar: '' }; account_save(); }
+  if (!account_profile.customAvatar && account_profile.customAvatar !== '') account_profile.customAvatar = '';
+  account_customAvatar = account_profile.customAvatar || '';
+  return account_profile;
+}
+function account_save() { storageSet('hc_profile', JSON.stringify(account_profile)); }
+function account_getName() { account_load(); return account_profile.name; }
+function account_getAvatar() { account_load(); return account_profile.customAvatar || account_profile.avatar; }
+
+function account_rrect(ctx, x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y);
+  ctx.arcTo(x+w,y,x+w,y+r,r); ctx.lineTo(x+w,y+h-r);
+  ctx.arcTo(x+w,y+h,x+w-r,y+h,r); ctx.lineTo(x+r,y+h);
+  ctx.arcTo(x,y+h,x,y+h-r,r); ctx.lineTo(x,y+r);
+  ctx.arcTo(x,y,x+r,y,r); ctx.closePath();
+}
+
+function account_draw(ctx, w, h) {
+  ctx.fillStyle = '#faf5eb'; ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = 'rgba(250,245,235,0.95)'; ctx.fillRect(0, 0, w, 64);
+  ctx.strokeStyle = 'rgba(0,0,0,0.05)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0,64); ctx.lineTo(w,64); ctx.stroke();
+  ctx.strokeStyle = '#5a4a3a'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(20,32); ctx.lineTo(30,23); ctx.moveTo(20,32); ctx.lineTo(30,41); ctx.stroke();
+  ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+  ctx.fillStyle = '#3a2a1a'; ctx.font = 'bold 17px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('账户', w/2, 32);
+  account_load(); var p = account_profile;
+  var avY = 100, avR = 44, avCx = w/2, avCy = avY + avR;
+  ctx.save(); ctx.beginPath(); ctx.arc(avCx, avCy, avR+6, 0, Math.PI*2); ctx.clip();
+  ctx.fillStyle = '#fff'; ctx.fillRect(avCx-avR-8, avCy-avR-8, (avR+8)*2, (avR+8)*2);
+  var isImg = account_customAvatar && account_customAvatar.indexOf('data:image') === 0;
+  if (isImg) {
+    if (!account_imgCache || account_imgCache._src !== account_customAvatar) {
+      account_imgCache = new Image(); account_imgCache._src = account_customAvatar; account_imgCache.src = account_customAvatar;
+    }
+    if (account_imgCache.complete && account_imgCache.naturalWidth > 0) {
+      var s = avR*2+12; ctx.drawImage(account_imgCache, avCx-s/2, avCy-s/2, s, s);
+    } else { ctx.fillStyle = '#e0d8c8'; ctx.fillRect(avCx-avR, avCy-avR, avR*2, avR*2); ctx.fillStyle = '#8a7a6a'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('加载中', avCx, avCy); }
+  } else {
+    var displayAvatar = account_customAvatar || p.avatar;
+    ctx.font = (displayAvatar.length > 2 ? '28px' : avR+'px') + ' sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(displayAvatar, avCx, avCy);
+  }
+  ctx.restore();
+  ctx.beginPath(); ctx.arc(avCx, avCy, avR+8, 0, Math.PI*2); ctx.strokeStyle = 'rgba(0,0,0,0.1)'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.fillStyle = '#8a7a6a'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('点击更换头像', w/2, avY+avR*2+15);
+  var btnsY = avY+avR*2+28, btnW3=62, btnH3=24, btnGap2=10, totalW2=btnW3*2+btnGap2, btnStartX=w/2-totalW2/2;
+  ctx.fillStyle = (account_customAvatar && !isImg) ? '#f0e8d8' : '#e8e0d4'; account_rrect(ctx, btnStartX, btnsY, btnW3, btnH3, 6); ctx.fill();
+  ctx.fillStyle = '#5a4a3a'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('✏️ 文字', btnStartX+btnW3/2, btnsY+btnH3/2);
+  ctx.fillStyle = isImg ? '#f0e8d8' : '#e0e8f0'; account_rrect(ctx, btnStartX+btnW3+btnGap2, btnsY, btnW3, btnH3, 6); ctx.fill();
+  ctx.fillStyle = '#4a5a6a'; ctx.font = '11px sans-serif'; ctx.fillText('📷 相册', btnStartX+btnW3+btnGap2+btnW3/2, btnsY+btnH3/2);
+  if (account_customAvatar) { var resetY=btnsY+btnH3+8; ctx.fillStyle = '#f5e8e0'; account_rrect(ctx, w/2-32, resetY, 64, 20, 5); ctx.fill(); ctx.fillStyle = '#8a5a4a'; ctx.font = '10px sans-serif'; ctx.fillText('🔄 重置', w/2, resetY+10); }
+  var nameY = avY+avR*2+46; ctx.fillStyle = '#fff'; account_rrect(ctx, w/2-100, nameY, 200, 50, 12); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.06)'; ctx.lineWidth = 1; account_rrect(ctx, w/2-100, nameY, 200, 50, 12); ctx.stroke();
+  ctx.fillStyle = '#5a4a3a'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText('昵称', w/2-86, nameY+8);
+  ctx.fillStyle = '#3a2a1a'; ctx.font = 'bold 16px sans-serif'; ctx.textBaseline = 'bottom'; ctx.fillText(p.name, w/2-86, nameY+42);
+  ctx.fillStyle = '#8a7a6a'; ctx.font = '14px sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle'; ctx.fillText('✏️', w/2+80, nameY+25);
+  var statsY = nameY+72, stats = leaderboard_computeStats();
+  var cards = [{label:'总局数',value:stats.total+' 局'},{label:'总胜场',value:(stats.bWin+stats.wWin)+' 胜'},{label:'胜率',value:stats.total>0?Math.round((stats.bWin+stats.wWin)/stats.total*100)+'%':'--'},{label:'连胜',value:stats.streakLen+' 局'}];
+  var cW=(w-52)/4, cH=60, cGap=8;
+  for (var ci=0;ci<4;ci++) { var cx=16+ci*(cW+cGap); ctx.fillStyle = '#fff'; account_rrect(ctx, cx, statsY, cW, cH, 10); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.04)'; ctx.lineWidth = 1; account_rrect(ctx, cx, statsY, cW, cH, 10); ctx.stroke();
+    ctx.fillStyle = '#8a7a6a'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(cards[ci].label, cx+cW/2, statsY+8);
+    ctx.fillStyle = '#3a2a1a'; ctx.font = 'bold 17px sans-serif'; ctx.textBaseline = 'bottom'; ctx.fillText(cards[ci].value, cx+cW/2, statsY+cH-8); }
+  var themeY=statsY+cH+24; ctx.fillStyle = '#fff'; account_rrect(ctx, 16, themeY, w-32, 44, 10); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.04)'; ctx.lineWidth = 1; account_rrect(ctx, 16, themeY, w-32, 44, 10); ctx.stroke();
+  ctx.fillStyle = '#5a4a3a'; ctx.font = '13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText('🎨 对局风格', 30, themeY+22);
+  ctx.fillStyle = '#8a7a6a'; ctx.font = '12px sans-serif'; ctx.textAlign = 'right'; ctx.fillText(design_stones[design_stone].name+' · '+design_boards[design_board].name, w-30, themeY+22);
+  var btnY=h-90; ctx.fillStyle = '#8a6040'; account_rrect(ctx, 20, btnY+1, w-40, 50, 12); ctx.fill();
+  ctx.fillStyle = '#a07050'; account_rrect(ctx, 20, btnY, w-40, 50, 12); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('返回主菜单', w/2, btnY+25);
+}
+
+function account_hitTest(mx, my, w, h) {
+  if (mx>=6&&mx<=42&&my>=8&&my<=56) return 'back';
+  var avY=100,avR=44; var dist=Math.sqrt(Math.pow(mx-w/2,2)+Math.pow(my-(avY+avR),2)); if (dist<=avR+8) return 'avatar';
+  var btnsY=avY+avR*2+28,btnW3=62,btnH3=24,btnGap2=10,totalW2=btnW3*2+btnGap2,btnStartX=w/2-totalW2/2;
+  if (my>=btnsY&&my<=btnsY+btnH3) { if (mx>=btnStartX&&mx<=btnStartX+btnW3) return 'custom_text'; if (mx>=btnStartX+btnW3+btnGap2&&mx<=btnStartX+totalW2) return 'custom_photo'; }
+  if (account_customAvatar) { var resetY=btnsY+btnH3+8; if (mx>=w/2-32&&mx<=w/2+32&&my>=resetY&&my<=resetY+20) return 'custom_reset'; }
+  var nameY=avY+avR*2+46; if (mx>=w/2-100&&mx<=w/2+100&&my>=nameY&&my<=nameY+50) return 'name';
+  var btnY=h-90; if (mx>=20&&mx<=w-20&&my>=btnY&&my<=btnY+50) return 'back';
+  return null;
+}
+
+function handleAccountTouch(mx, my) {
+  var hit = account_hitTest(mx, my, W, H); if (!hit) return;
+  if (hit==='back') { account_save(); STATE = 'MENU'; }
+  else if (hit==='avatar') { account_load(); var idx=account_avatars.indexOf(account_profile.avatar); idx=(idx+1)%account_avatars.length; account_profile.avatar=account_avatars[idx]; account_profile.customAvatar=''; account_customAvatar=''; account_imgCache=null; account_save(); }
+  else if (hit==='custom_text') { account_load(); var custom=prompt('输入自定义头像（emoji或1-2个字符）：',account_customAvatar||''); if (custom&&custom.trim()) { var val=custom.trim().slice(0,3); account_profile.customAvatar=val; account_customAvatar=val; account_imgCache=null; account_save(); showToast('头像已更新！',1200); } }
+  else if (hit==='custom_photo') { var input=document.getElementById('avatarFileInput'); if (input) input.click(); }
+  else if (hit==='custom_reset') { account_load(); account_profile.customAvatar=''; account_customAvatar=''; account_imgCache=null; account_save(); showToast('已重置为预设头像',1200); }
+  else if (hit==='name') { account_load(); var newName=prompt('请输入昵称（最多8字）：',account_profile.name); if (newName&&newName.trim()) { account_profile.name=newName.trim().slice(0,8); account_save(); } }
+}
+
+function account_onFilePicked(e) {
+  var file=e.target.files&&e.target.files[0]; if (!file) return;
+  if (file.size>5*1024*1024) { showToast('图片不能超过5MB',2000); return; }
+  var reader=new FileReader();
+  reader.onload=function(ev){ var img=new Image(); img.onload=function(){
+    var maxSz=128,w=img.width,h=img.height; if (w>maxSz||h>maxSz) { var ratio=Math.min(maxSz/w,maxSz/h); w=Math.round(w*ratio); h=Math.round(h*ratio); }
+    var cvs=document.createElement('canvas'); cvs.width=w; cvs.height=h; var cx=cvs.getContext('2d'); cx.drawImage(img,0,0,w,h);
+    var dataUrl=cvs.toDataURL('image/jpeg',0.8); account_load(); account_profile.customAvatar=dataUrl; account_customAvatar=dataUrl; account_imgCache=img; account_imgCache._src=dataUrl; account_save(); showToast('头像已更新！',1200);
+  }; img.src=ev.target.result; };
+  reader.readAsDataURL(file); e.target.value='';
+}
+
+// Update menu "账户" area to show avatar + nickname
+var _menuDrawOrig = drawMenu;
+drawMenu = function(ctx, w, h) {
+  _menuDrawOrig(ctx, w, h);
+  var name=account_getName(), av=account_getAvatar(), customAv=account_customAvatar, displayAv=customAv||av;
+  if (name && (name!=='棋手'||customAv)) {
+    var acx=24+14,acy=46,ar=14;
+    ctx.save(); ctx.beginPath(); ctx.arc(acx,acy,ar,0,Math.PI*2); ctx.clip();
+    ctx.fillStyle='#fff'; ctx.fillRect(acx-ar,acy-ar,ar*2,ar*2);
+    var isImg=customAv&&customAv.indexOf('data:image')===0;
+    if (isImg&&account_imgCache&&account_imgCache.complete&&account_imgCache.naturalWidth>0) { var s2=ar*2; ctx.drawImage(account_imgCache,acx-s2/2,acy-s2/2,s2,s2); }
+    else { ctx.font='14px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(displayAv,acx,acy+1); }
+    ctx.restore(); ctx.beginPath(); ctx.arc(acx,acy,ar,0,Math.PI*2); ctx.strokeStyle='rgba(0,0,0,0.08)'; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle='#5a4a3a'; ctx.font='13px sans-serif'; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillText(name,48,52);
+  }
+};
+
+// ============================================================
+// Module: utils/leaderboard.js — 排行榜
+// ============================================================
+var leaderboard_tab = 'local', leaderboard_scrollOffset = 0, leaderboard_screenH = 600, leaderboard_globalData = null, leaderboard_globalLoading = false;
+
+function leaderboard_computeStats() {
+  if (!history_loaded) { try { var raw=storageGet('hc_history'); history_records=raw?JSON.parse(raw):[]; history_loaded=true; } catch(e) { history_records=[]; } }
+  var recs=history_records, total=recs.length; if (total===0) return { total:0 };
+  var totalMoves=0,streakType=null,streakLen=0;
+  for (var i=0;i<recs.length;i++) totalMoves+=recs[i].totalMoves||0;
+  for (var j=0;j<recs.length;j++) { var w=recs[j].winner; if (streakType===null){streakType=w;streakLen=1;}else if(w===streakType)streakLen++;else break; }
+  var bWin=0,wWin=0; for (var k=0;k<recs.length;k++) { if (recs[k].winner==='B') bWin++; else wWin++; }
+  return { total:total, bWin:bWin, wWin:wWin, avgMoves:total>0?Math.round(totalMoves/total):0, streakType:streakType, streakLen:streakLen, lastGame:recs[0]||null };
+}
+
+function leaderboard_lrrect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.arcTo(x+w,y,x+w,y+r,r);ctx.lineTo(x+w,y+h-r);ctx.arcTo(x+w,y+h,x+w-r,y+h,r);ctx.lineTo(x+r,y+h);ctx.arcTo(x,y+h,x,y+h-r,r);ctx.lineTo(x,y+r);ctx.arcTo(x,y,x+r,y,r);ctx.closePath();}
+
+function leaderboard_draw(ctx, w, h) {
+  leaderboard_screenH=h; ctx.fillStyle='#faf5eb'; ctx.fillRect(0,0,w,h);
+  ctx.fillStyle='rgba(250,245,235,0.95)'; ctx.fillRect(0,0,w,64); ctx.strokeStyle='rgba(0,0,0,0.05)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(0,64); ctx.lineTo(w,64); ctx.stroke();
+  ctx.strokeStyle='#5a4a3a'; ctx.lineWidth=2; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.beginPath(); ctx.moveTo(20,32); ctx.lineTo(30,23); ctx.moveTo(20,32); ctx.lineTo(30,41); ctx.stroke(); ctx.lineCap='butt'; ctx.lineJoin='miter';
+  ctx.fillStyle='#3a2a1a'; ctx.font='bold 17px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('排行榜',w/2,32);
+  var tabY=74,tabH=38,tabW=(w-80)/2,tabX=40,tabs=[{key:'local',label:'📊 本地战绩'},{key:'global',label:'🌐 全服排行'}];
+  for (var t=0;t<tabs.length;t++) { var tx=tabX+t*tabW,active=leaderboard_tab===tabs[t].key; ctx.fillStyle=active?'#8a6040':'#e8e0d4'; leaderboard_lrrect(ctx,tx,tabY,tabW,tabH,8); ctx.fill(); ctx.fillStyle=active?'#fff':'#5a4a3a'; ctx.font='13px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(tabs[t].label,tx+tabW/2,tabY+tabH/2); }
+  var contentY=tabY+tabH+14;
+  if (leaderboard_tab==='local') {
+    var stats=leaderboard_computeStats(); if (stats.total===0) { ctx.fillStyle='#8a7a6a'; ctx.font='14px sans-serif'; ctx.textAlign='center'; ctx.fillText('暂无对局记录',w/2,h/2); ctx.font='12px sans-serif'; ctx.fillText('完成一局对局后自动统计',w/2,h/2+24); return; }
+    var cardW=(w-48)/2,cardH=64,cardGap=10,cards2=[{label:'总局数',value:stats.total+' 局',color:'#5a4a3a'},{label:'黑胜/白胜',value:stats.bWin+' / '+stats.wWin,color:'#3a2a1a'},{label:'当前连胜',value:stats.streakLen+' 连胜'+(stats.streakType==='B'?'⚫':'⚪'),color:'#8a6040'},{label:'场均手数',value:stats.avgMoves+' 手',color:'#4a6a4a'}];
+    for (var c=0;c<4;c++) { var cx2=16+(c%2)*(cardW+cardGap),cy2=contentY+Math.floor(c/2)*(cardH+cardGap); ctx.fillStyle='#fff'; leaderboard_lrrect(ctx,cx2,cy2,cardW,cardH,10); ctx.fill(); ctx.strokeStyle='rgba(0,0,0,0.05)'; ctx.lineWidth=1; leaderboard_lrrect(ctx,cx2,cy2,cardW,cardH,10); ctx.stroke(); ctx.fillStyle='#8a7a6a'; ctx.font='11px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText(cards2[c].label,cx2+cardW/2,cy2+10); ctx.fillStyle=cards2[c].color; ctx.font='bold 18px sans-serif'; ctx.textBaseline='bottom'; ctx.fillText(cards2[c].value,cx2+cardW/2,cy2+cardH-10); }
+    var listY=contentY+2*(cardH+cardGap)+16; ctx.fillStyle='#5a4a3a'; ctx.font='bold 13px sans-serif'; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillText('— 最近对局 —',20,listY); listY+=22;
+    var recs=history_records,itemH=52,itemGap=6,maxScroll=Math.max(0,recs.length*(itemH+itemGap)-(h-listY-30)); leaderboard_scrollOffset=Math.max(0,Math.min(maxScroll,leaderboard_scrollOffset));
+    var count=0;
+    for (var i=0;i<recs.length;i++) { var iy=listY+i*(itemH+itemGap)-leaderboard_scrollOffset; if (iy+itemH<contentY+120) continue; if (iy>h-10) break; count++;
+      var rec=recs[i],won=rec.winner; ctx.fillStyle='#fff'; leaderboard_lrrect(ctx,16,iy,w-32,itemH,8); ctx.fill(); ctx.strokeStyle='rgba(0,0,0,0.04)'; ctx.lineWidth=1; leaderboard_lrrect(ctx,16,iy,w-32,itemH,8); ctx.stroke();
+      var indicatorX=16+14; ctx.fillStyle=won==='B'?'#3a2a1a':'#d8d0c8'; ctx.beginPath(); ctx.arc(indicatorX,iy+itemH/2,14,0,Math.PI*2); ctx.fill(); if (won==='W'){ctx.strokeStyle='#bbb';ctx.lineWidth=1;ctx.stroke();}
+      ctx.fillStyle=won==='B'?'#ddd':'#555'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(won==='B'?'⚫':'⚪',indicatorX,iy+itemH/2+1);
+      ctx.fillStyle='#3a2a1a'; ctx.font='14px sans-serif'; ctx.textAlign='left'; ctx.textBaseline='top'; ctx.fillText((won==='B'?'⚫ 黑胜':'⚪ 白胜'),indicatorX+20,iy+6);
+      ctx.fillStyle='#8a7a6a'; ctx.font='11px sans-serif'; var det=(rec.resign?'认输 · ':'')+rec.totalMoves+'手 · 差'+rec.diff+'目'; ctx.fillText(det,indicatorX+20,iy+26);
+      var d=new Date(rec.createdAt),ds=(d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0'); ctx.textAlign='right'; ctx.fillText(ds,w-28,iy+6);
+      if (rec.blackTerr!==undefined) ctx.fillText('黑'+(rec.blackTerr+rec.blackStones)+' · 白'+(rec.whiteTerr+rec.whiteStones),w-28,iy+26);
+    }
+    if (count===0&&recs.length>0){ctx.fillStyle='#8a7a6a';ctx.font='13px sans-serif';ctx.textAlign='center';ctx.fillText('↓ 下滑查看更多 ↓',w/2,h/2+60);}
+  } else {
+    if (!WS.isConnected()){ctx.fillStyle='#8a7a6a';ctx.font='14px sans-serif';ctx.textAlign='center';ctx.fillText('🔴 未连接到服务器',w/2,h/2-10);ctx.fillText('请先连接网络',w/2,h/2+16);return;}
+    if (leaderboard_globalLoading){ctx.fillStyle='#8a7a6a';ctx.font='14px sans-serif';ctx.textAlign='center';ctx.fillText('加载中…',w/2,h/2);return;}
+    if (!leaderboard_globalData){leaderboard_globalLoading=true;WS.send({type:'leaderboard'});ctx.fillStyle='#8a7a6a';ctx.font='14px sans-serif';ctx.textAlign='center';ctx.fillText('正在获取全服排行…',w/2,h/2);return;}
+    var gd=leaderboard_globalData,headerY=contentY; ctx.fillStyle='#f0ebe0'; leaderboard_lrrect(ctx,16,headerY,w-32,32,8); ctx.fill();
+    ctx.fillStyle='#5a4a3a';ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText('排名',30,headerY+16);ctx.textAlign='center';ctx.fillText('战绩',w/2,headerY+16);ctx.textAlign='right';ctx.fillText('评分',w-30,headerY+16);
+    var pList=gd.players||[],rowH=44,rowGap=4,rowStart=headerY+40;
+    for (var p=0;p<pList.length;p++){var py=rowStart+p*(rowH+rowGap);if(py+rowH<contentY)continue;if(py>h)break;var player=pList[p],rank=p+1;
+      ctx.fillStyle=rank===1?'#fff8e8':(rank<=3?'#faf5eb':'#fff');leaderboard_lrrect(ctx,16,py,w-32,rowH,8);ctx.fill();
+      if(rank<=3){ctx.strokeStyle=rank===1?'#c8a050':(rank===2?'#a0a0a0':'#c08050');ctx.lineWidth=rank===1?2:1;leaderboard_lrrect(ctx,16,py,w-32,rowH,8);ctx.stroke();}
+      var rankEmoji=rank===1?'🥇':rank===2?'🥈':rank===3?'🥉':'#'+rank; ctx.fillStyle='#3a2a1a';ctx.font='bold 14px sans-serif';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(rankEmoji,28,py+rowH/2);
+      ctx.font='13px sans-serif';ctx.fillText(player.name||('棋手'+player.id),58,py+rowH/2-7);ctx.fillStyle='#8a7a6a';ctx.font='11px sans-serif';
+      ctx.fillText((player.wins||0)+'胜 '+(player.losses||0)+'负 · 胜率'+Math.round((player.winRate||0)*100)+'%',58,py+rowH/2+9);
+      ctx.fillStyle='#8a6040';ctx.font='bold 14px sans-serif';ctx.textAlign='right';ctx.fillText(String(player.rating||1000),w-30,py+rowH/2);
+    }
+    if(!pList.length){ctx.fillStyle='#8a7a6a';ctx.font='13px sans-serif';ctx.textAlign='center';ctx.fillText('暂无排行数据',w/2,h/2);}
+  }
+}
+
+function leaderboard_hitTest(mx,my,w,h){if(mx>=6&&mx<=42&&my>=8&&my<=56)return'back';var tabY=74,tabH=38,tabW=(w-80)/2,tabX=40;if(my>=tabY&&my<=tabY+tabH){if(mx>=tabX&&mx<=tabX+tabW)return'tab_local';if(mx>=tabX+tabW&&mx<=tabX+tabW*2)return'tab_global';}return null;}
+function leaderboard_scroll(delta){if(leaderboard_tab!=='local')return;var recs=history_records,itemH=52,itemGap=6,listY=74+38+14+2*(64+10)+16+22;var maxScroll=Math.max(0,recs.length*(itemH+itemGap)-(leaderboard_screenH-listY-30));leaderboard_scrollOffset=Math.max(0,Math.min(maxScroll,leaderboard_scrollOffset+delta));}
+
+function leaderboard_open(){history_load();leaderboard_tab='local';leaderboard_scrollOffset=0;leaderboard_globalData=null;leaderboard_globalLoading=false;STATE='LEADERBOARD';}
+function handleLeaderboardTouch(mx,my){var hit=leaderboard_hitTest(mx,my,W,H);if(!hit)return;if(hit==='back'){leaderboard_scrollOffset=0;STATE='MENU';}else if(hit==='tab_local'){leaderboard_tab='local';leaderboard_scrollOffset=0;}else if(hit==='tab_global'){leaderboard_tab='global';leaderboard_globalData=null;leaderboard_globalLoading=false;}}
+
+// ============================================================
+// Module: utils/forum.js — 棋友论坛（大厅聊天）
+// ============================================================
+var forum_messages = [], forum_scrollOffset = 0, forum_screenH = 600;
+var _myForumPlayerId = ''; WS.on('welcome', function(data) { _myForumPlayerId = data.playerId || ''; });
+
+function forum_frrect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.arcTo(x+w,y,x+w,y+r,r);ctx.lineTo(x+w,y+h-r);ctx.arcTo(x+w,y+h,x+w-r,y+h,r);ctx.lineTo(x+r,y+h);ctx.arcTo(x,y+h,x,y+h-r,r);ctx.lineTo(x,y+r);ctx.arcTo(x,y,x+r,y,r);ctx.closePath();}
+
+var _fmCtx=null;
+function _fmTextW(text,font){if(!_fmCtx){var c=document.createElement('canvas');_fmCtx=c.getContext('2d');}_fmCtx.font=font;return _fmCtx.measureText(text).width;}
+function _fmWrap(text,font,maxW){if(!_fmCtx){var c=document.createElement('canvas');_fmCtx=c.getContext('2d');}_fmCtx.font=font;var words=text.split(''),lines=1,line='';for(var i=0;i<words.length;i++){var test=line+words[i];if(_fmCtx.measureText(test).width>maxW&&line.length>0){lines++;line=words[i];}else line=test;}return{lines:lines,lastLine:line};}
+function _fmFmtTime(ts){var d=new Date(ts),h=d.getHours(),m=d.getMinutes();return(h<10?'0':'')+h+':'+(m<10?'0':'')+m;}
+
+function forum_draw(ctx,w,h){
+  forum_screenH=h; ctx.fillStyle='#faf5eb'; ctx.fillRect(0,0,w,h);
+  ctx.fillStyle='rgba(250,245,235,0.95)'; ctx.fillRect(0,0,w,64); ctx.strokeStyle='rgba(0,0,0,0.05)'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(0,64); ctx.lineTo(w,64); ctx.stroke();
+  ctx.strokeStyle='#5a4a3a'; ctx.lineWidth=2; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.beginPath(); ctx.moveTo(20,32); ctx.lineTo(30,23); ctx.moveTo(20,32); ctx.lineTo(30,41); ctx.stroke(); ctx.lineCap='butt'; ctx.lineJoin='miter';
+  ctx.fillStyle='#3a2a1a'; ctx.font='bold 17px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('棋友论坛',w/2,32);
+  var wsStat=WS.getStatus(); ctx.fillStyle='#8a7a6a'; ctx.font='11px sans-serif'; ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.fillText((wsStat==='connected'?'🟢':'🔴')+' '+(wsStat==='connected'?'已连接':'未连接'),w-16,32);
+  var chatY=74,chatH=h-chatY-54,msgGap=8;
+  if(!forum_messages.length){ctx.fillStyle='#8a7a6a';ctx.font='14px sans-serif';ctx.textAlign='center';ctx.fillText('💬 暂无消息，来打个招呼吧！',w/2,h/2);ctx.font='12px sans-serif';ctx.fillText('下方输入框发送消息',w/2,h/2+22);return;}
+  // Compute heights
+  var totalH=0,msgHeights=[];
+  for(var i=0;i<forum_messages.length;i++){var mh=_fmMsgH(forum_messages[i],w-32);msgHeights.push(mh);totalH+=mh+msgGap;}
+  var maxScroll=Math.max(0,totalH-chatH); forum_scrollOffset=Math.max(0,Math.min(maxScroll,forum_scrollOffset));
+  var curY=chatY-forum_scrollOffset;
+  for(var j=0;j<forum_messages.length;j++){var mh2=msgHeights[j],msgBottom=curY+mh2;if(msgBottom<chatY){curY+=mh2+msgGap;continue;}if(curY>chatY+chatH)break;_fmDrawMsg(ctx,forum_messages[j],16,curY,w-32);curY+=mh2+msgGap;}
+  if(forum_scrollOffset<maxScroll-10){ctx.fillStyle='rgba(0,0,0,0.15)';ctx.font='11px sans-serif';ctx.textAlign='center';ctx.fillText('↓ 下滑查看更多 ↓',w/2,h-58);}
+}
+function _fmMsgH(msg,w){var avatarR=14;var nameW=_fmTextW(msg.name||'棋友','bold 12px sans-serif');var bubbleMaxW=Math.max(60,w-avatarR*2-16-12);var tw=_fmWrap(msg.msg||'','13px sans-serif',bubbleMaxW-16);return Math.max(44,22+tw.lines*20+10);}
+function _fmDrawMsg(ctx,msg,x,y,w){
+  var avatarR=14,isMe=msg.playerId===_myForumPlayerId,name=msg.name||'棋友',avatar=msg.avatar||'😊',bubbleMaxW=Math.max(40,w-avatarR*2-16-12);
+  if(isMe){
+    var ax2=x+w-avatarR; ctx.fillStyle='#e8f0e0'; ctx.beginPath();ctx.arc(ax2,y+avatarR+2,avatarR,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(0,0,0,0.06)';ctx.lineWidth=1;ctx.stroke();
+    ctx.font='13px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(avatar,ax2,y+avatarR+2);
+    ctx.fillStyle='#5a7a4a';ctx.font='bold 11px sans-serif';ctx.textAlign='right';ctx.textBaseline='top';ctx.fillText(name,ax2-avatarR-8,y);ctx.fillStyle='#8a9a8a';ctx.font='10px sans-serif';ctx.fillText(_fmFmtTime(msg.time),ax2-avatarR-8,y+14);
+    var tw=_fmWrap(msg.msg,'13px sans-serif',bubbleMaxW-16),bw=Math.min(bubbleMaxW,_fmTextW(tw.lastLine||msg.msg,'13px sans-serif')+20);bw=Math.max(bw,36);var bh=tw.lines*20+16,bx=ax2-avatarR-16-bw,by2=y+28;
+    ctx.fillStyle='#d4e8c8';forum_frrect(ctx,bx,by2,bw,bh,10);ctx.fill();
+    ctx.fillStyle='#2a3a1a';ctx.font='13px sans-serif';ctx.textAlign='left';ctx.textBaseline='top';_fmWrapped(ctx,msg.msg,'13px sans-serif',bx+10,by2+8,bubbleMaxW-16,20);
+  } else {
+    var ax1=x+avatarR; ctx.fillStyle='#f0ece8'; ctx.beginPath();ctx.arc(ax1,y+avatarR+2,avatarR,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(0,0,0,0.06)';ctx.lineWidth=1;ctx.stroke();
+    ctx.font='13px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(avatar,ax1,y+avatarR+2);
+    ctx.fillStyle='#5a4a3a';ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.textBaseline='top';ctx.fillText(name,ax1+avatarR+8,y);ctx.fillStyle='#8a7a6a';ctx.font='10px sans-serif';ctx.fillText(_fmFmtTime(msg.time),ax1+avatarR+8,y+14);
+    var tw2=_fmWrap(msg.msg,'13px sans-serif',bubbleMaxW-16),bw2=Math.min(bubbleMaxW,_fmTextW(tw2.lastLine||msg.msg,'13px sans-serif')+20);bw2=Math.max(bw2,36);var bh2=tw2.lines*20+16,bx2=ax1+avatarR+12,by3=y+28;
+    ctx.fillStyle='#fff';forum_frrect(ctx,bx2,by3,bw2,bh2,10);ctx.fill();ctx.strokeStyle='rgba(0,0,0,0.04)';ctx.lineWidth=1;forum_frrect(ctx,bx2,by3,bw2,bh2,10);ctx.stroke();
+    ctx.fillStyle='#3a2a1a';ctx.font='13px sans-serif';ctx.textAlign='left';ctx.textBaseline='top';_fmWrapped(ctx,msg.msg,'13px sans-serif',bx2+10,by3+8,bubbleMaxW-16,20);
+  }
+}
+function _fmWrapped(ctx,text,font,x,y,maxW,lineH){ctx.font=font;var chars=text.split(''),line='',curY=y;for(var i=0;i<chars.length;i++){var test=line+chars[i];if(ctx.measureText(test).width>maxW&&line.length>0){ctx.fillText(line,x,curY);curY+=lineH;line=chars[i];}else line=test;}if(line)ctx.fillText(line,x,curY);}
+
+function forum_hitTest(mx,my,w,h){if(mx>=6&&mx<=42&&my>=8&&my<=56)return'back';return null;}
+function forum_scroll(delta){forum_scrollOffset=Math.max(0,forum_scrollOffset+delta);}
+function forum_enter(){forum_scrollOffset=0;document.getElementById('chatBar').classList.add('show');document.getElementById('chatInput').focus();STATE='FORUM';}
+function forum_leave(){document.getElementById('chatBar').classList.remove('show');STATE='MENU';}
+function handleForumTouch(mx,my){var hit=forum_hitTest(mx,my,W,H);if(hit==='back')forum_leave();}
+function forum_sendMsg(){var input=document.getElementById('chatInput');if(!input)return;var text=input.value.trim();if(!text)return;if(!WS.isConnected()){showToast('未连接到服务器',1500);return;}account_load();var p=account_profile;WS.send({type:'chat',msg:text,name:p.name||'棋友',avatar:p.customAvatar||p.avatar||'😊'});input.value='';forum_scrollOffset=0;}
+WS.on('chat',function(data){forum_messages.push(data);if(forum_messages.length>300)forum_messages.shift();if(STATE==='FORUM')forum_scrollOffset=0;});
+WS.on('chat_history',function(data){forum_messages=data.messages||[];});
+document.getElementById('chatInput').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();forum_sendMsg();}});
+document.addEventListener('keydown',function(e){if(STATE!=='FORUM')return;if(e.key==='Escape'){e.preventDefault();forum_leave();}});
 // Module: utils/history.js (localStorage version)
 // ============================================================
 var history_records = [];
@@ -1329,15 +1727,18 @@ canvas.addEventListener('pointerdown', function(e) {
   else if (STATE === 'MENU')    handleMenuTouch(pos.mx, pos.my);
   else if (STATE === 'DESIGN')  handleDesignTouch(pos.mx, pos.my);
   else if (STATE === 'INVITE')  handleInviteTouch(pos.mx, pos.my);
-  else if (STATE === 'HISTORY') handleHistoryTouch(pos.mx, pos.my);
-  else if (STATE === 'GAME')    handleGameTouch(pos.mx, pos.my);
+  else if (STATE === 'HISTORY')    handleHistoryTouch(pos.mx, pos.my);
+  else if (STATE === 'LEADERBOARD') handleLeaderboardTouch(pos.mx, pos.my);
+  else if (STATE === 'FORUM')       handleForumTouch(pos.mx, pos.my);
+  else if (STATE === 'ACCOUNT')     handleAccountTouch(pos.mx, pos.my);
+  else if (STATE === 'GAME')        handleGameTouch(pos.mx, pos.my);
 });
 
 // Mouse wheel for history scrolling
 canvas.addEventListener('wheel', function(e) {
-  if (STATE !== 'HISTORY') return;
-  e.preventDefault();
-  history_scroll(e.deltaY);
+  if (STATE === 'HISTORY') { e.preventDefault(); history_scroll(e.deltaY); }
+  else if (STATE === 'LEADERBOARD') { e.preventDefault(); leaderboard_scroll(e.deltaY); }
+  else if (STATE === 'FORUM') { e.preventDefault(); forum_scroll(e.deltaY); }
 }, { passive: false });
 
 // Keyboard shortcuts
@@ -1373,6 +1774,12 @@ function loop() {
     invite_draw(c, W, H, theme);
   } else if (STATE === 'HISTORY') {
     history_draw(c, W, H);
+  } else if (STATE === 'LEADERBOARD') {
+    leaderboard_draw(c, W, H);
+  } else if (STATE === 'FORUM') {
+    forum_draw(c, W, H);
+  } else if (STATE === 'ACCOUNT') {
+    account_draw(c, W, H);
   } else if (STATE === 'GAME') {
     drawGameScene(c);
   }
@@ -1384,7 +1791,8 @@ function enterMenu()  { if (STATE !== 'MENU')  STATE = 'MENU'; }
 function enterDesign(){ STATE = 'DESIGN'; }
 function enterGame()  {
   theme = getTheme();
-  if (!restoreGame()) { stoneMap.clear(); moves = []; currentIdx = -1; currentColor = 'B'; }
+  if (isOnline) { stoneMap.clear(); moves = []; currentIdx = -1; currentColor = 'B'; }
+  else if (!restoreGame()) { stoneMap.clear(); moves = []; currentIdx = -1; currentColor = 'B'; }
   isOnline = network_isOnline();
   myTurn   = isOnline ? (network_myColor() === 'B') : true;
   koPoint = null;
@@ -1395,10 +1803,10 @@ function enterGame()  {
 function handleMenuTouch(mx, my) {
   var hit = menuHitTest(mx, my, W, H);
   if (hit === 'duiju') enterDesign();
+  else if (hit === 'account') { account_load(); STATE = 'ACCOUNT'; }
   else if (hit === 'history') { history_load(); STATE = 'HISTORY'; }
-  else if (hit === 'rank' || hit === 'forum') {
-    showToast('功能开发中', 1500);
-  }
+  else if (hit === 'rank') { leaderboard_open(); }
+  else if (hit === 'forum') { forum_enter(); }
 }
 
 function handleDesignTouch(mx, my) {
@@ -1502,21 +1910,24 @@ function doPass() {
     currentColor = moves.length % 2 === 0 ? 'B' : 'W';
     koPoint = null;
     saveGame();
-    if (isOnline) { network_syncMove(-1, -1, r.color); myTurn = false; }
+    if (isOnline) { WS.sendPass(); myTurn = false; }
     if (isDoublePass(moves)) doEndGame();
   }
 }
 
 function doResign() {
+  if (isOnline && !myTurn) return;
   showModal('认输', '确定认输吗？', function() {
     gameResult = { winner: currentColor === 'B' ? 'W' : 'B', diff: 0,
       blackTerritory: 0, whiteTerritory: 0, blackStones: 0, whiteStones: 0,
       resign: true };
+    if (isOnline) { WS.sendResign(); myTurn = false; }
     doEndGame();
   });
 }
 
 function doRematch() {
+  if (isOnline) { showToast('联网对局不支持重开', 1500); return; }
   showModal('重新开局', '确定清空棋盘重新开始吗？', function() {
     stoneMap.clear(); moves = []; currentIdx = -1; currentColor = 'B';
     koPoint = null; gameResult = null; myTurn = true;
@@ -1526,8 +1937,6 @@ function doRematch() {
 
 function doEndGame() {
   if (!gameResult) gameResult = calculateScore(stoneMap);
-
-  // Save to local history
   var record = {
     winner:      gameResult.winner,
     diff:        gameResult.diff,
@@ -1540,7 +1949,6 @@ function doEndGame() {
     createdAt:   Date.now()
   };
   history_saveRecord(record);
-
   if (network_isOnline()) network_endGame();
   storageRemove('hc_game');
   saveGame();
@@ -1548,16 +1956,20 @@ function doEndGame() {
 
 function endGameCleanup() {
   if (network_isOnline()) network_endGame();
+  network_reset();
+  isOnline = false; myTurn = true;
   gameResult = null; koPoint = null;
   stoneMap.clear(); moves = []; currentIdx = -1; currentColor = 'B';
 }
 
 function doUndo() {
+  if (isOnline) { showToast('联网对局不支持悔棋', 1500); return; }
   var r = undoMove(stoneMap, moves, currentIdx);
   if (r.success) { currentIdx = r.newIdx; currentColor = moves.length % 2 === 0 ? 'B' : 'W'; saveGame(); }
 }
 
 function doClear() {
+  if (isOnline) { showToast('联网对局不支持清空棋盘', 1500); return; }
   if (!moves.length) return;
   showModal('清空棋盘', '确定清空当前对局吗？', function() {
     stoneMap.clear(); moves = []; currentIdx = -1; currentColor = 'B';
@@ -1566,6 +1978,7 @@ function doClear() {
 }
 
 function saveGame() {
+  if (isOnline) return;
   storageSet('hc_game', JSON.stringify({ moves: moves.map(function(m){return {x:m.x,y:m.y,color:m.color};}), currentIdx: currentIdx }));
 }
 
